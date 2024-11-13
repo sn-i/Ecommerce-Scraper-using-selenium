@@ -9,6 +9,7 @@ from selenium.common.exceptions import TimeoutException, ElementClickIntercepted
 from webdriver_manager.chrome import ChromeDriverManager
 from bs4 import BeautifulSoup
 import time
+from data import Data
 
 
 class Scraper:
@@ -19,10 +20,12 @@ class Scraper:
             self.chrome_options.add_argument("--headless")
         self.service = Service(ChromeDriverManager().install())
         self.driver = webdriver.Chrome(service=self.service, options=self.chrome_options)
+        self.data_handler = Data()
 
-    def scrape_newegg(self, product_name):
+    def scrape_newegg(self, product_name, zip_code):
         max_retries = 3
         retry_count = 0
+        scraped_data = []
 
         while retry_count < max_retries:
             try:
@@ -39,7 +42,7 @@ class Scraper:
                     zip_change = wait.until(EC.element_to_be_clickable((By.XPATH,
                                                                         '//*[@id="app"]/header/div[1]/div[1]/div[1]/div[3]/div/div/div/div/div[2]/div[4]/div/div/input')))
                     zip_change.clear()
-                    zip_change.send_keys("19720")
+                    zip_change.send_keys(zip_code)
 
                     zip_apply = wait.until(
                         EC.element_to_be_clickable((By.XPATH,
@@ -96,10 +99,13 @@ class Scraper:
                         print(f"Availability: {availability}")
                         print("-" * 40)
 
+                        scraped_data.append([product_name, price, availability])
+
                     except AttributeError as e:
                         print(f"Attribute error occurred while extracting product details: {e}")
                         continue
 
+                self.data_handler.store_data(scraped_data, filename="newegg_scraped_data.csv")
                 return
 
             except (TimeoutException, ElementClickInterceptedException, NoSuchElementException) as e:
@@ -130,6 +136,8 @@ class Scraper:
 
             product_list = soup.find_all('li', class_='product_wrapper')
 
+            scraped_data = []
+
             print("Showing microcenter output")
             print("-" * 80)
             for product in product_list:
@@ -157,15 +165,18 @@ class Scraper:
                     print(f"Availability: {availability}")
                     print("-" * 40)
 
+                    scraped_data.append([product_name, price, availability])
+
                 except Exception as e:
                     print(f"An error occurred with a product: {e}")
                     continue
 
+            self.data_handler.store_data(scraped_data, filename="microcenter_scraped_data.csv")
+
         except Exception as e:
             print(f"An error occurred on Micro Center: {e}")
 
-
-    def scrape_amazon(self, product_name):
+    def scrape_amazon(self, product_name, zip_code):
         try:
             self.driver.get("https://www.amazon.com/")
             wait = WebDriverWait(self.driver, 20)
@@ -176,7 +187,7 @@ class Scraper:
 
             zip_change = wait.until(EC.element_to_be_clickable((By.ID, 'GLUXZipUpdateInput')))
             zip_change.clear()
-            zip_change.send_keys("19720")
+            zip_change.send_keys(zip_code)
 
             zip_apply = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="GLUXZipUpdate"]/span/input')))
             zip_apply.click()
@@ -198,6 +209,8 @@ class Scraper:
             soup = BeautifulSoup(self.driver.page_source, 'html.parser')
 
             product_containers = soup.find_all('div', {'data-component-type': 's-search-result'})
+
+            scraped_data = []
 
             print("Showing amazon output")
             print("-" * 80)
@@ -226,6 +239,8 @@ class Scraper:
                     print(f"Availability: {availability}")
                     print("-" * 40)
 
+                    scraped_data.append([product_name, price, availability])
+
                     if "More results" in product_name or idx >= 15:
                         break
 
@@ -233,15 +248,18 @@ class Scraper:
                     print(f"Attribute error occurred while extracting product details: {e}")
                     continue
 
+            # Store the scraped data
+            self.data_handler.store_data(scraped_data, filename="amazon_scraped_data.csv")
+
         except (TimeoutException, NoSuchElementException) as e:
             print(f"An error occurred while scraping Amazon: {e}")
         finally:
             self.driver.quit()
 
-    def search_all_sites(self, product_name):
-        self.scrape_newegg(product_name)
+    def search_all_sites(self, product_name, zip_code):
+        self.scrape_newegg(product_name, zip_code)
         self.scrape_microcenter(product_name)
-        self.scrape_amazon(product_name)
+        self.scrape_amazon(product_name, zip_code)
 
     def close_driver(self):
         self.driver.quit()
@@ -249,7 +267,8 @@ class Scraper:
 
 if __name__ == "__main__":
     product_name = input("Enter the product you want to search for: ")
+    zip_code = input("Enter zip code you want to search for: ")
 
     scraper = Scraper(headless=False)
-    scraper.search_all_sites(product_name)
+    scraper.search_all_sites(product_name, zip_code)
     scraper.close_driver()
